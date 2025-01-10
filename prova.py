@@ -116,9 +116,9 @@ class EnergyManagementSystem(optModel):
         if hasattr(self._model, 'obj'):
             self._model.del_component('obj')
             
-        # Converto c da euro/MWh a euro/kWh prima di usarlo nella funzione obiettivo
-        converted_prices = [price / 1000 for price in c]
-        self._model.obj = Objective(expr=sum(-converted_prices[t] * self._model.P_g[t] 
+        
+        converted_prices = [-price for price in c]
+        self._model.obj = Objective(expr=sum(converted_prices[t] * self._model.P_g[t] 
                                              + 10000 * self._model.eps[t] 
                                     for t in range(self.T)), sense=minimize)
 
@@ -201,11 +201,13 @@ class EnergyManagementSystem(optModel):
         plt.tight_layout()
         plt.show()
 
-        
+
 # Leggi i dati dai file CSV
 pv_data = pd.read_csv('./dataset.csv', usecols=[1]).squeeze()
 load_data = pd.read_csv('./dataset.csv', usecols=[2]).squeeze()
 price_data = pd.read_csv('./dataset.csv', usecols=[3]).squeeze()
+
+
 
 
 # DATAFRAME CON I DATI
@@ -234,6 +236,8 @@ for start in range(0, total_hours, 24):
     P_r = df['PV Data'][start:end].tolist()
     P_l = df['Load Data'][start:end].tolist()
     price = df['Price Data'][start:end].tolist()
+    # Converto c da euro/MWh a euro/kWh prima di usarlo nella funzione obiettivo
+    price = [p / 1000 for p in price]
 
     # Creazione del modello per la finestra corrente
     model = EnergyManagementSystem(T=24)
@@ -241,7 +245,8 @@ for start in range(0, total_hours, 24):
     model.setObj(price)
 
     # Risoluzione del modello e aggiunta del costo alla somma totale
-    _, costo_finestra = model.solve()
+    w, _ = model.solve()
+    costo_finestra = np.sum(-(price * w))
     costo_totale += costo_finestra
 
 # Stampa del costo totale

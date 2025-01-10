@@ -374,22 +374,17 @@ num_layers = 1  # Numero di layer LSTM
 # Inizializzazione del modello
 reg = LSTMModel(input_dim, hidden_dim, output_dim, num_layers)
 
-from sklearn.preprocessing import StandardScaler
 
 
-def normalize_input(x):
-    """Applica lo StandardScaler per normalizzare i dati di input x."""
+def normalize_input(x, scaler):
+    """Normalizza il tensore di input x utilizzando lo scaler fittato."""
     # Converti il tensore PyTorch in un array NumPy
     x_np = x.numpy()
-    # Flattening delle prime due dimensioni per permettere il fitting dello scaler
+    # Flattening delle prime due dimensioni per rispecchiare il formato usato durante il fitting dello scaler
     original_shape = x_np.shape
     x_reshaped = x_np.reshape(-1, original_shape[1] * original_shape[2])
     
-    # Crea e fitta lo StandardScaler
-    scaler = StandardScaler()
-    scaler.fit(x_reshaped)
-    
-    # Applica la trasformazione dello scaler
+    # Applica lo scaler
     x_scaled = scaler.transform(x_reshaped)
     
     # Ritorna alla forma originale (batch_size, lookback, num_features)
@@ -456,16 +451,16 @@ def trainModel(reg, func, method_name, loader_train, loader_test, optmodel,
 
             # 🎈🎈🎈🎈🎈🎈🎈 FORWARD PASS 🎈🎈🎈🎈🎈🎈🎈
     
-            #x_normalized = normalize_input(x)
-            #cp = reg(x_normalized)
-            #cp_denormalized = denormalize_output(cp, scaler_target)
-            cp = reg(x) # prediction
+            x_normalized = normalize_input(x, scaler_features)
+            cp = reg(x_normalized)
+            cp_denormalized = denormalize_output(cp, scaler_target)
+            #cp = reg(x) # prediction
 
             if method_name == "SPO+":
                 # spo+ loss
-                loss = func(cp, c, w, z)
+                loss = func(cp_denormalized, c, w, z)
             elif  method_name == "2-Stage":
-                loss = func(cp, c)
+                loss = func(cp_denormalized, c)
             else:
                 raise ValueError("Unknown method_name: {}".format(method_name))
             # regularization term

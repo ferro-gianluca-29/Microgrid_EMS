@@ -215,12 +215,15 @@ df = pd.DataFrame({
     'Price Data': price_data.values
 })
 
+
 price = df['Price Data']
 
 # Converto da euro/MWh a euro/kWh prima di usarlo nella funzione obiettivo
 price = price / 1000
 
+
 model = EnergyManagementSystem(T = 24) 
+
 
 # Definizione della funzione per creare le finestre
 def create_windows(data, lookback, forecast_horizon):
@@ -246,6 +249,8 @@ print("Dimensioni delle target_price:", target_price.shape)  # Dovrebbe essere (
 
 
 from sklearn.model_selection import train_test_split
+
+
 
 # Specifica la proporzione del set di test; ad esempio, 0.2 per il 20% come test set
 test_size = 0.2
@@ -279,6 +284,7 @@ target_price_test = scaler_target.transform(target_price_test)"""
 
 input_features_train = input_features_train.reshape(input_features_train.shape[0], lookback, -1)
 input_features_test = input_features_test.reshape(input_features_test.shape[0], lookback, -1)
+
 
 
 # Stampiamo le dimensioni per verificare
@@ -334,7 +340,7 @@ dataset_test = optDataset(model, input_features_test, target_price_test, P_r_win
 
 # get data loader
 from torch.utils.data import DataLoader
-batch_size = 2
+batch_size = 32
 # batch_size_test = 1 # in origine era 1
 loader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
 loader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
@@ -344,23 +350,30 @@ loader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 import torch
 from torch import nn
 
-import torch.nn.functional as F
-
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=1):
         super(LSTMModel, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         
+        # Definire il layer LSTM
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        
+        # Layer lineare per ridurre la dimensione nascosta all'output_size desiderato
         self.linear = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
+        # Inizializza lo stato nascosto e il cell state
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
         c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
         
+        # Forward pass attraverso LSTM
         out, _ = self.lstm(x, (h0, c0))
+        
+        # Prendi solo l'ultimo time step
         out = out[:, -1, :]
+        
+        # Passa attraverso un layer lineare
         out = self.linear(out)
         return out
 
@@ -374,22 +387,16 @@ num_layers = 1  # Numero di layer LSTM
 # Inizializzazione del modello
 reg = LSTMModel(input_dim, hidden_dim, output_dim, num_layers)
 
-from sklearn.preprocessing import StandardScaler
 
-
-def normalize_input(x):
-    """Applica lo StandardScaler per normalizzare i dati di input x."""
+def normalize_input(x, scaler):
+    """Normalizza il tensore di input x utilizzando lo scaler fittato."""
     # Converti il tensore PyTorch in un array NumPy
     x_np = x.numpy()
-    # Flattening delle prime due dimensioni per permettere il fitting dello scaler
+    # Flattening delle prime due dimensioni per rispecchiare il formato usato durante il fitting dello scaler
     original_shape = x_np.shape
     x_reshaped = x_np.reshape(-1, original_shape[1] * original_shape[2])
     
-    # Crea e fitta lo StandardScaler
-    scaler = StandardScaler()
-    scaler.fit(x_reshaped)
-    
-    # Applica la trasformazione dello scaler
+    # Applica lo scaler
     x_scaled = scaler.transform(x_reshaped)
     
     # Ritorna alla forma originale (batch_size, lookback, num_features)
@@ -456,7 +463,7 @@ def trainModel(reg, func, method_name, loader_train, loader_test, optmodel,
 
             # 🎈🎈🎈🎈🎈🎈🎈 FORWARD PASS 🎈🎈🎈🎈🎈🎈🎈
     
-            #x_normalized = normalize_input(x)
+            #_normalized = normalize_input(x, scaler_features)
             #cp = reg(x_normalized)
             #cp_denormalized = denormalize_output(cp, scaler_target)
             cp = reg(x) # prediction
@@ -537,7 +544,7 @@ for i, data in enumerate(loader_test):
         #x_normalized = normalize_input(x, scaler_features)
         
         cp = reg(x)
-
+        cp = cp.cpu().detach().numpy()[0]
         #cp_denormalized = denormalize_output(cp, scaler_target)
         #cp_denormalized = cp_denormalized.cpu().detach().numpy()[0]
         model.setObj(cp)
